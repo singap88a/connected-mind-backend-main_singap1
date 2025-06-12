@@ -3,14 +3,15 @@ const mongoose = require("mongoose");
 const connectDB = async (url) => {
   try {
     const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
       family: 4,
       maxPoolSize: 10,
+      minPoolSize: 5,
       retryWrites: true,
       retryReads: true,
+      connectTimeoutMS: 10000,
+      heartbeatFrequencyMS: 10000,
     };
 
     await mongoose.connect(url, options);
@@ -23,6 +24,14 @@ const connectDB = async (url) => {
     mongoose.connection.on('disconnected', () => {
       console.log('MongoDB disconnected. Attempting to reconnect...');
       setTimeout(() => connectDB(url), 5000);
+    });
+
+    mongoose.connection.on('connected', () => {
+      console.log('MongoDB connected successfully');
+    });
+
+    mongoose.connection.on('connecting', () => {
+      console.log('Connecting to MongoDB...');
     });
 
   } catch (error) {

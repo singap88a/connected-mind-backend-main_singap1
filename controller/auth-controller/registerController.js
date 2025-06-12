@@ -4,6 +4,8 @@ const { check, validationResult } = require("express-validator");
 
 const registerController = async (req, res) => {
   try {
+    console.log("Received registration request:", req.body);
+
     // التحقق من صحة البيانات
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -19,16 +21,36 @@ const registerController = async (req, res) => {
 
     // التحقق من وجود جميع الحقول المطلوبة
     if (!username || !email || !password) {
+      console.error("Missing required fields:", { username, email, password: !!password });
       return res.status(400).json({ 
         error: true,
         message: "يرجى ملء جميع الحقول المطلوبة" 
       });
     }
 
+    // التحقق من صحة البريد الإلكتروني
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        error: true,
+        message: "صيغة البريد الإلكتروني غير صحيحة"
+      });
+    }
+
+    // التحقق من طول كلمة المرور
+    if (password.length < 8) {
+      return res.status(400).json({
+        error: true,
+        message: "يجب أن تكون كلمة المرور 8 أحرف على الأقل"
+      });
+    }
+
     // التحقق من وجود المستخدم
     try {
+      console.log("Checking for existing user with email:", email);
       const existingUser = await userModel.findOne({ email: email });
       if (existingUser) {
+        console.log("User already exists with email:", email);
         return res.status(409).json({ 
           error: true,
           message: "البريد الإلكتروني مسجل مسبقاً" 
@@ -46,6 +68,7 @@ const registerController = async (req, res) => {
     // تشفير كلمة المرور
     let hashedPassword;
     try {
+      console.log("Hashing password...");
       hashedPassword = await bcrypt.hash(password, 12);
     } catch (hashError) {
       console.error("Error hashing password:", hashError);
@@ -57,6 +80,7 @@ const registerController = async (req, res) => {
 
     // إنشاء المستخدم الجديد
     try {
+      console.log("Creating new user...");
       const newUser = await userModel.create({
         username,
         email,
@@ -65,6 +89,8 @@ const registerController = async (req, res) => {
         block: false,
         hideContent: false,
       });
+
+      console.log("User created successfully:", newUser._id);
 
       const userWithoutPassword = newUser.toObject();
       delete userWithoutPassword.password;
