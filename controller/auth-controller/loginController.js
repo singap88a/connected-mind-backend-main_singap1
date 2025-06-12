@@ -8,31 +8,62 @@ const loginController = async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({
-        success: false,
-        error: "Email and password are required",
+        error: true,
+        message: "يرجى إدخال البريد الإلكتروني وكلمة المرور"
       });
     }
 
     const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!isValidEmail(email)) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid email format" });
+      return res.status(400).json({ 
+        error: true,
+        message: "صيغة البريد الإلكتروني غير صحيحة" 
+      });
     }
 
-    const user = await UserModel.findOne({ email }).select("+password");
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    let user;
+    try {
+      user = await UserModel.findOne({ email }).select("+password");
+    } catch (dbError) {
+      console.error("Database error while finding user:", dbError);
+      return res.status(500).json({
+        error: true,
+        message: "خطأ في الاتصال بقاعدة البيانات",
+        details: dbError.message
+      });
+    }
+
+    if (!user) {
       return res.status(401).json({
-        success: false,
-        error: "Invalid credentials",
+        error: true,
+        message: "البريد الإلكتروني غير مسجل"
+      });
+    }
+
+    let isPasswordValid;
+    try {
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    } catch (bcryptError) {
+      console.error("Error comparing passwords:", bcryptError);
+      return res.status(500).json({
+        error: true,
+        message: "خطأ في التحقق من كلمة المرور"
+      });
+    }
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        error: true,
+        message: "كلمة المرور غير صحيحة"
       });
     }
 
     if (user.block) {
-        return res
-          .status(403)
-          .json({ message: "Your account is blocked. Access denied." });
-      }
+      return res.status(403).json({
+        error: true,
+        message: "تم حظر حسابك. يرجى التواصل مع الدعم الفني"
+      });
+    }
 
     const tokenPayload = {
       id: user._id,
@@ -43,9 +74,18 @@ const loginController = async (req, res) => {
       role: user.role,
     };
 
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET_KEY, {
-      expiresIn: process.env.JWT_EXPIRES_IN || "1h",
-    });
+    let token;
+    try {
+      token = jwt.sign(tokenPayload, process.env.JWT_SECRET_KEY, {
+        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
+      });
+    } catch (jwtError) {
+      console.error("Error creating JWT:", jwtError);
+      return res.status(500).json({
+        error: true,
+        message: "خطأ في إنشاء جلسة المستخدم"
+      });
+    }
 
     res.cookie("token", token, {
       httpOnly: false,
@@ -57,24 +97,25 @@ const loginController = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      error: false,
       token,
       user: {
         id: user._id,
-        name: user.name,
+        username: user.username,
         email: user.email,
         phone: user.phone,
         block: user.block,
         hideContent: user.hideContent,
         role: user.role,
       },
-      message: "Login successful",
+      message: "تم تسجيل الدخول بنجاح"
     });
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("Unexpected error in login controller:", err);
     return res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      message: process.env.NODE_ENV === "development" ? err.message : undefined,
+      error: true,
+      message: "حدث خطأ غير متوقع",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined
     });
   }
 };
